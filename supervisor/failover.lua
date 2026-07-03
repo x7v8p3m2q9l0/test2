@@ -1,7 +1,7 @@
 --
 -- Supervisor Primary/Backup Failover Controller
 --
--- [NEW] Lightweight heartbeat-based failover between a PRIMARY supervisor and one or
+-- Lightweight heartbeat-based failover between a PRIMARY supervisor and one or
 -- more BACKUP supervisors covering the same reactor units.
 --
 -- Design intent, read this before changing behavior:

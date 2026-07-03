@@ -27,5 +27,6 @@
     "Lua.diagnostics.disable": [
         "duplicate-set-field",
         "inject-field"
-    ]
+    ],
+    "snyk.advanced.autoSelectOrganization": true
 }

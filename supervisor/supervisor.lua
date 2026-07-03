@@ -73,7 +73,7 @@ function supervisor.load_config()
     config.CRD_Channel = settings.get("CRD_Channel")
     config.PKT_Channel = settings.get("PKT_Channel")
 
-    -- [NEW] primary/backup failover settings. defaults preserve exact prior behavior
+    -- primary/backup failover settings. defaults preserve exact prior behavior
     -- (a lone PRIMARY with failover effectively disabled) for any existing config
     -- that predates this feature and never set these fields.
     config.SV_Role = settings.get("SV_Role", "PRIMARY")
@@ -151,7 +151,7 @@ function supervisor.load_config()
     cfv.assert_channel(config.CRD_Channel)
     cfv.assert_channel(config.PKT_Channel)
 
-    -- [NEW] failover field validation. SyncChannel of 0 means failover is disabled
+    -- failover field validation. SyncChannel of 0 means failover is disabled
     -- (the common case / backward-compatible default), so it's exempted from the
     -- channel range check that a real channel value would need to pass.
     cfv.assert_type_str(config.SV_Role)
@@ -216,7 +216,7 @@ function supervisor.comms(_version, fp_ok, facility)
 
     local self = {
         last_est_acks = {},    ---@type ESTABLISH_ACK[]
-        -- [NEW] flood protection for repeated ESTABLISH attempts from the same source address.
+        -- flood protection for repeated ESTABLISH attempts from the same source address.
         -- previously, last_est_acks only deduplicated LOG MESSAGES; every ESTABLISH packet
         -- still triggered full session-establishment processing and a response transmission
         -- on every call, with no cost to a spammer. This tracks strikes and applies a cooldown.
@@ -224,7 +224,7 @@ function supervisor.comms(_version, fp_ok, facility)
         est_cooldown_until = {}  ---@type { [integer]: integer }
     }
 
-    -- [NEW] check whether a source address is currently under an establish cooldown,
+    -- check whether a source address is currently under an establish cooldown,
     -- and if not, record a denied attempt (call this only on DENY/COLLISION paths)
     ---@param src_addr integer
     ---@return boolean blocked true if this source should be ignored right now
@@ -245,7 +245,7 @@ function supervisor.comms(_version, fp_ok, facility)
         return false
     end
 
-    -- [NEW] record a denied establish attempt; after 3 denials within a short window,
+    -- record a denied establish attempt; after 3 denials within a short window,
     -- silently ignore that source for 30s to blunt an establish-flood DoS attempt
     ---@param src_addr integer
     local function _est_flood_strike(src_addr)
@@ -282,7 +282,7 @@ function supervisor.comms(_version, fp_ok, facility)
         nic.transmit(rx_frame.remote_channel(), config.SVR_Channel, tx_frame)
         self.last_est_acks[rx_frame.src_addr()] = ack
 
-        -- [NEW] count strikes for anything other than a successful link; this is the one
+        -- count strikes for anything other than a successful link; this is the one
         -- choke point every establish response passes through regardless of device type
         if ack ~= ESTABLISH_ACK.ALLOW then
             _est_flood_strike(rx_frame.src_addr())
@@ -298,7 +298,7 @@ function supervisor.comms(_version, fp_ok, facility)
     ---@param i_seq_num integer
     ---@param last_ack ESTABLISH_ACK
     local function _establish_plc(nic, packet, src_addr, i_seq_num, last_ack)
-        -- [NEW] drop silently if this source is under an establish-flood cooldown
+        -- drop silently if this source is under an establish-flood cooldown
         if _est_flood_check(src_addr) then return end
 
         local comms_v    = packet.data[1]
@@ -365,7 +365,7 @@ function supervisor.comms(_version, fp_ok, facility)
     ---@param i_seq_num integer
     ---@param last_ack ESTABLISH_ACK
     local function _establish_rtu_gw(nic, packet, src_addr, i_seq_num, last_ack)
-        -- [NEW] drop silently if this source is under an establish-flood cooldown
+        -- drop silently if this source is under an establish-flood cooldown
         if _est_flood_check(src_addr) then return end
 
         local comms_v    = packet.data[1]
@@ -412,7 +412,7 @@ function supervisor.comms(_version, fp_ok, facility)
     ---@param i_seq_num integer
     ---@param last_ack ESTABLISH_ACK
     local function _establish_crd(nic, packet, src_addr, i_seq_num, last_ack)
-        -- [NEW] drop silently if this source is under an establish-flood cooldown
+        -- drop silently if this source is under an establish-flood cooldown
         if _est_flood_check(src_addr) then return end
 
         local comms_v    = packet.data[1]
@@ -456,7 +456,7 @@ function supervisor.comms(_version, fp_ok, facility)
     ---@param i_seq_num integer
     ---@param last_ack ESTABLISH_ACK
     local function _establish_pdg(nic, packet, src_addr, i_seq_num, last_ack)
-        -- [NEW] drop silently if this source is under an establish-flood cooldown
+        -- drop silently if this source is under an establish-flood cooldown
         if _est_flood_check(src_addr) then return end
 
         local comms_v    = packet.data[1]

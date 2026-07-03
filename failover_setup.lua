@@ -1,7 +1,7 @@
 --
 -- Failover Setup Helper
 --
--- [NEW] The supervisor's failover fields (SV_Role, SV_SyncChannel, SV_PeerGroup,
+-- The supervisor's failover fields (SV_Role, SV_SyncChannel, SV_PeerGroup,
 -- SV_FailoverTimeout) are opt-in and have safe defaults (a plain PRIMARY with failover
 -- disabled) - see supervisor/failover.lua for the design. There's no page in the main
 -- graphical configurator for them; wiring a new screen into that multi-pane wizard

@@ -52,7 +52,7 @@ function backplane.init(config, start_active)
         _bp.nic_map[_bp.lan_iface] = wd_nic
 
         wd_nic.closeAll()
-        -- [NEW] SyncChannel (failover heartbeat) is safe to open regardless of active
+        -- SyncChannel (failover heartbeat) is safe to open regardless of active
         -- state - it carries no control authority, see supervisor/failover.lua. The
         -- command channel (SVR_Channel) is gated on start_active so a passive BACKUP
         -- never listens on the channel PLCs/RTUs/coordinators actually talk on.
@@ -88,7 +88,7 @@ function backplane.init(config, start_active)
     return true
 end
 
--- [NEW] open the command channel (SVR_Channel) on whichever modems are connected.
+-- open the command channel (SVR_Channel) on whichever modems are connected.
 -- called by a BACKUP supervisor exactly once, at the moment failover.check_promote()
 -- (or wait_as_backup()) reports a promotion to active.
 ---@param config svr_config

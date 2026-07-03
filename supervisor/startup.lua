@@ -135,7 +135,7 @@ local function main()
     end
 
     -- modem initialization
-    -- [NEW] failover-aware startup. when SV_SyncChannel is 0 (the default), this is a
+    -- failover-aware startup. when SV_SyncChannel is 0 (the default), this is a
     -- single no-op branch that behaves exactly as before - existing configs and anyone
     -- not using failover see zero behavior change. see supervisor/failover.lua for the
     -- design rationale (in particular: why conflicts are never auto-resolved).
@@ -213,7 +213,7 @@ local function main()
         if heartbeat_toggle then databus.heartbeat() end
         heartbeat_toggle = not heartbeat_toggle
 
-        -- [NEW] send our own failover heartbeat if we're the active instance in a
+        -- send our own failover heartbeat if we're the active instance in a
         -- failover-enabled facility; no-ops entirely when failover is disabled
         if sv_failover ~= nil then sv_failover.tick_transmit() end
 
@@ -246,7 +246,7 @@ local function main()
 
         -- handle event
         if event == "modem_message" then
-            -- [NEW] check for our own failover heartbeat traffic first; these arrive on
+            -- check for our own failover heartbeat traffic first; these arrive on
             -- SyncChannel, a different channel than any SCADA protocol traffic, and are
             -- fully consumed here rather than passed to the SCADA packet parser
             local was_heartbeat = sv_failover ~= nil and sv_failover.handle_message(param2, param4)

@@ -15,13 +15,17 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ]]--
 
-local CCMSI_VERSION = "v1.22"
+
+-- write some of my own code
+
+local CCMSI_VERSION = "v1.23-C"
 
 local IS_PKT = pocket ~= nil -- luacheck: ignore pocket
 
 local INSTALL_DIR = "/.install-cache"
-local MANIFEST_DIR = "https://mikaylafischler.github.io/cc-mek-scada/manifests/"
-local REPO_BASE = "http://raw.githubusercontent.com/MikaylaFischler/cc-mek-scada/"
+-- change later
+local MANIFEST_DIR = "https://raw.githubusercontent.com/x7v8p3m2q9l0/x7v8p3m2q9l0.github.io/refs/heads/"--"https://mikaylafischler.github.io/cc-mek-scada/manifests/" 
+local REPO_BASE = "http://raw.githubusercontent.com/x7v8p3m2q9l0/test2/"--"http://raw.githubusercontent.com/MikaylaFischler/cc-mek-scada/" 
 
 local OPTS = { ... }
 

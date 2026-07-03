@@ -52,7 +52,7 @@ function psil.create()
     function public.publish(key, value)
         if ic[key] == nil then alloc(key) end
 
-        -- [NEW] a plain publish() clears any TTL previously set on this key, since it now
+        -- a plain publish() clears any TTL previously set on this key, since it now
         -- represents a fresh, non-expiring value again
         ic[key].expiry = nil
 
@@ -65,7 +65,7 @@ function psil.create()
         end
     end
 
-    -- [NEW] publish data with a time-to-live; once the TTL elapses, get() on this key
+    -- publish data with a time-to-live; once the TTL elapses, get() on this key
     -- returns nil and subscribers are notified of the expiry with a nil value.
     -- useful for heartbeat/liveness indicators and any reading that should be treated
     -- as unknown rather than stale once its source stops publishing.
@@ -86,7 +86,7 @@ function psil.create()
         end
     end
 
-    -- [NEW] lazily expire a key if its TTL has passed; called from get() so no timer
+    -- lazily expire a key if its TTL has passed; called from get() so no timer
     -- infrastructure is needed. Notifies subscribers once on the transition to expired.
     ---@param key string data key
     local function _check_expiry(key)

@@ -102,7 +102,7 @@ constants.EXTREME_RADIATION   = 100.0
 constants.WARN_RTT = 300 -- 2x as long as expected w/ 0 ping
 constants.HIGH_RTT = 500 -- 3.33x as long as expected w/ 0 ping
 
--- [NEW] maximum number of reactor units a single facility can be configured with.
+-- maximum number of reactor units a single facility can be configured with.
 -- previously this was hardcoded to 4 in over a dozen places across supervisor,
 -- coordinator, and RTU validation/config code, with no protocol-level reason for
 -- the limit (the reactor-plc's UnitID field was never bounded at all).

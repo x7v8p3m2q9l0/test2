@@ -191,7 +191,7 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
 
     TextBox{parent=fac_cfg,y=2,text=" Facility Configuration",fg_bg=cpair(colors.black,colors.yellow)}
 
-    -- [NEW] forward declaration: assigned in the Facility Tanks Option region below,
+    -- forward declaration: assigned in the Facility Tanks Option region below,
     -- but needs to be callable from the earlier Unit Count submit handler
     local _update_fac_tank_availability = function() end
 
@@ -223,7 +223,7 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
                 end
             end
 
-            -- [NEW] the facility tank mode visualizer can't represent more than 4
+            -- the facility tank mode visualizer can't represent more than 4
             -- units, so keep its availability in sync with whatever count was just set
             _update_fac_tank_availability()
 
@@ -332,7 +332,7 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
 
     tool_ctl.en_fac_tanks = Checkbox{parent=fac_c_3,y=12,label="Use Facility Dynamic Tanks",default=ini_cfg.FacilityTankMode>0,box_fg_bg=cpair(colors.yellow,colors.black)}
 
-    -- [NEW] the facility tank mode visual layout screen (fac_c_5) is hand-built for
+    -- the facility tank mode visual layout screen (fac_c_5) is hand-built for
     -- exactly 4 units and cannot represent more without a real redesign. rather than
     -- let a >4 unit facility reach a broken/incomplete visualizer, disable this path
     -- entirely above 4 units and steer toward per-unit tank mode, which is fully
@@ -355,12 +355,12 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
         end
     end
 
-    -- [NEW] fill in the forward-declared upvalue so the earlier Unit Count screen's
+    -- fill in the forward-declared upvalue so the earlier Unit Count screen's
     -- submit handler can call the real implementation
     _update_fac_tank_availability = _update_fac_tank_availability_impl
 
     local function submit_en_fac_tank()
-        -- [NEW] hard guard: never allow facility tank mode above 4 units, even if
+        -- hard guard: never allow facility tank mode above 4 units, even if
         -- tmp_cfg.UnitCount changed after this checkbox was last interacted with
         if tmp_cfg.UnitCount > 4 then tool_ctl.en_fac_tanks.set_value(false) end
 
