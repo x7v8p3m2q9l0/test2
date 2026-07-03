@@ -1,4 +1,5 @@
 local comms      = require("scada-common.comms")
+local constants  = require("scada-common.constants")
 local network    = require("scada-common.network")
 local ppm        = require("scada-common.ppm")
 local rsio       = require("scada-common.rsio")
@@ -197,15 +198,18 @@ local function self_check()
             local p_type = ppm.get_type(entry.name)
 
             if p_type == "boilerValve" then
-                valid = is_int_min_max(entry.index, 1, 2) and is_int_min_max(entry.unit, 1, 4)
+                valid = is_int_min_max(entry.index, 1, 2) and is_int_min_max(entry.unit, 1, constants.MAX_UNITS)
             elseif p_type == "turbineValve" then
-                valid = is_int_min_max(entry.index, 1, 3) and is_int_min_max(entry.unit, 1, 4)
+                valid = is_int_min_max(entry.index, 1, 3) and is_int_min_max(entry.unit, 1, constants.MAX_UNITS)
             elseif p_type == "solarNeutronActivator" then
-                valid = is_int_min_max(entry.unit, 1, 4)
+                valid = is_int_min_max(entry.unit, 1, constants.MAX_UNITS)
             elseif p_type == "dynamicValve" then
-                valid = (entry.unit == nil and is_int_min_max(entry.index, 1, 4)) or is_int_min_max(entry.unit, 1, 4)
+                -- note: entry.index here (when unit is nil) is a facility tank slot index,
+                -- a separate dimension capped at 4 by the facility tank mode visualizer -
+                -- intentionally not raised alongside MAX_UNITS, see constants.lua
+                valid = (entry.unit == nil and is_int_min_max(entry.index, 1, 4)) or is_int_min_max(entry.unit, 1, constants.MAX_UNITS)
             elseif p_type == "environmentDetector" or p_type == "environment_detector"  then
-                valid = (entry.unit == nil or is_int_min_max(entry.unit, 1, 4)) and util.is_int(entry.index)
+                valid = (entry.unit == nil or is_int_min_max(entry.unit, 1, constants.MAX_UNITS)) and util.is_int(entry.index)
             else
                 valid = true
 

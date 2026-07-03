@@ -28,8 +28,11 @@ backplane.nics = _bp.nic_map
 
 -- initialize the system peripheral backplane
 ---@param config svr_config
+---@param start_active boolean whether to open the command channel (SVR_Channel) immediately -
+--- true for a plain PRIMARY or a facility not using failover, false for a BACKUP that
+--- must stay off SVR_Channel until promoted (see supervisor/failover.lua)
 ---@return boolean success
-function backplane.init(config)
+function backplane.init(config, start_active)
     _bp.lan_iface = config.WiredModem
 
     -- setup the wired modem, if configured
@@ -49,7 +52,12 @@ function backplane.init(config)
         _bp.nic_map[_bp.lan_iface] = wd_nic
 
         wd_nic.closeAll()
-        wd_nic.open(config.SVR_Channel)
+        -- [NEW] SyncChannel (failover heartbeat) is safe to open regardless of active
+        -- state - it carries no control authority, see supervisor/failover.lua. The
+        -- command channel (SVR_Channel) is gated on start_active so a passive BACKUP
+        -- never listens on the channel PLCs/RTUs/coordinators actually talk on.
+        if config.SV_SyncChannel ~= 0 then wd_nic.open(config.SV_SyncChannel) end
+        if start_active then wd_nic.open(config.SVR_Channel) end
 
         databus.tx_hw_wd_modem(true)
     end
@@ -71,12 +79,23 @@ function backplane.init(config)
         _bp.nic_map[iface] = wl_nic
 
         wl_nic.closeAll()
-        wl_nic.open(config.SVR_Channel)
+        if config.SV_SyncChannel ~= 0 then wl_nic.open(config.SV_SyncChannel) end
+        if start_active then wl_nic.open(config.SVR_Channel) end
 
         databus.tx_hw_wl_modem(true)
     end
 
     return true
+end
+
+-- [NEW] open the command channel (SVR_Channel) on whichever modems are connected.
+-- called by a BACKUP supervisor exactly once, at the moment failover.check_promote()
+-- (or wait_as_backup()) reports a promotion to active.
+---@param config svr_config
+function backplane.activate_command_channel(config)
+    if _bp.wd_nic ~= nil then _bp.wd_nic.open(config.SVR_Channel) end
+    if _bp.wl_nic ~= nil then _bp.wl_nic.open(config.SVR_Channel) end
+    log.info("BKPLN: command channel " .. config.SVR_Channel .. " opened (failover activation)")
 end
 
 -- handle a backplane peripheral attach

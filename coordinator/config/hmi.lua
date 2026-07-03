@@ -1,4 +1,5 @@
 local ppm         = require("scada-common.ppm")
+local constants   = require("scada-common.constants")
 local types       = require("scada-common.types")
 local util        = require("scada-common.util")
 
@@ -61,7 +62,7 @@ function hmi.create(tool_ctl, main_pane, cfg_sys, divs, style)
 
     local function next_from_reqs()
         -- unassign unit monitors above the unit count
-        for i = tmp_cfg.UnitCount + 1, 4 do tmp_cfg.UnitDisplays[i] = nil end
+        for i = tmp_cfg.UnitCount + 1, constants.MAX_UNITS do tmp_cfg.UnitDisplays[i] = nil end
 
         tool_ctl.gen_mon_list()
         mon_pane.set_value(2)
@@ -139,7 +140,7 @@ function hmi.create(tool_ctl, main_pane, cfg_sys, divs, style)
     local mon_assign = RadioButton{parent=mon_c_3,y=7,default=1,options={"Main Monitor","Flow Monitor","Unit Monitor"},callback=on_assign_mon,radio_colors=cpair(colors.lightGray,colors.black),select_color=colors.blue}
 
     mon_unit_l = TextBox{parent=mon_c_3,x=18,y=6,width=7,text="Unit ID"}
-    mon_unit = NumberField{parent=mon_c_3,x=18,y=7,width=10,max_chars=2,min=1,max=4,fg_bg=bw_fg_bg}
+    mon_unit = NumberField{parent=mon_c_3,x=18,y=7,width=10,max_chars=2,min=1,max=constants.MAX_UNITS,fg_bg=bw_fg_bg}
 
     local mon_u_err = TextBox{parent=mon_c_3,x=8,y=14,width=35,text="Please provide a unit ID.",fg_bg=cpair(colors.red,colors.lightGray),hidden=true}
 

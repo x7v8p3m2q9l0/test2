@@ -1,4 +1,5 @@
 local log          = require("scada-common.log")
+local constants    = require("scada-common.constants")
 local mqueue       = require("scada-common.mqueue")
 local ppm          = require("scada-common.ppm")
 local tcd          = require("scada-common.tcd")
@@ -54,20 +55,23 @@ local function handle_unit_mount(smem, println_ts, iface, type, device, unit)
             resend_advert = true
             if type == "boilerValve" then
                 -- boiler multiblock
-                if unit.reactor < 1 or unit.reactor > 4 then fail(util.c("boiler '", unit.name, "' cannot init, not assigned to a valid unit")) end
+                if unit.reactor < 1 or unit.reactor > constants.MAX_UNITS then fail(util.c("boiler '", unit.name, "' cannot init, not assigned to a valid unit")) end
                 if (unit.index == false) or unit.index < 1 or unit.index > 2 then fail(util.c("boiler '", unit.name, "' cannot init, invalid index provided")) end
 
                 unit.type = RTU_UNIT_TYPE.BOILER_VALVE
             elseif type == "turbineValve" then
                 -- turbine multiblock
-                if unit.reactor < 1 or unit.reactor > 4 then fail(util.c("turbine '", unit.name, "' cannot init, not assigned to a valid unit")) end
+                if unit.reactor < 1 or unit.reactor > constants.MAX_UNITS then fail(util.c("turbine '", unit.name, "' cannot init, not assigned to a valid unit")) end
                 if (unit.index == false) or unit.index < 1 or unit.index > 3 then fail(util.c("turbine '", unit.name, "' cannot init, invalid index provided")) end
 
                 unit.type = RTU_UNIT_TYPE.TURBINE_VALVE
             elseif type == "dynamicValve" then
                 -- dynamic tank multiblock
-                if unit.reactor < 0 or unit.reactor > 4 then fail(util.c("dynamic tank '", unit.name, "' cannot init, no valid assignment provided")) end
+                if unit.reactor < 0 or unit.reactor > constants.MAX_UNITS then fail(util.c("dynamic tank '", unit.name, "' cannot init, no valid assignment provided")) end
 
+                -- note: the "index > 4" bound below is a facility tank slot index when
+                -- unit.reactor == 0, a separate dimension intentionally left at 4, see
+                -- constants.lua MAX_UNITS comment
                 if (unit.reactor == 0 and ((unit.index == false) or unit.index < 1 or unit.index > 4)) or
                    (unit.reactor > 0 and unit.index ~= 1) then
                     fail(util.c("dynamic tank '", unit.name, "' cannot init, invalid index provided"))
@@ -86,12 +90,12 @@ local function handle_unit_mount(smem, println_ts, iface, type, device, unit)
                 unit.type = RTU_UNIT_TYPE.SPS
             elseif type == "solarNeutronActivator" then
                 -- SNA
-                if unit.reactor < 1 or unit.reactor > 4 then fail(util.c("SNA '", unit.name, "' cannot init, not assigned to a valid unit")) end
+                if unit.reactor < 1 or unit.reactor > constants.MAX_UNITS then fail(util.c("SNA '", unit.name, "' cannot init, not assigned to a valid unit")) end
 
                 unit.type = RTU_UNIT_TYPE.SNA
             elseif type == "environmentDetector" or type == "environment_detector"  then
                 -- advanced peripherals environment detector
-                if unit.reactor < 0 or unit.reactor > 4 then fail(util.c("environment detector '", unit.name, "' cannot init, no valid assignment provided")) end
+                if unit.reactor < 0 or unit.reactor > constants.MAX_UNITS then fail(util.c("environment detector '", unit.name, "' cannot init, no valid assignment provided")) end
                 if (unit.index == false) or unit.index < 1 then fail(util.c("environment detector '", unit.name, "' cannot init, invalid index provided")) end
 
                 unit.type = RTU_UNIT_TYPE.ENV_DETECTOR

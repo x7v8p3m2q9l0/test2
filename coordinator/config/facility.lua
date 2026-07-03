@@ -1,4 +1,5 @@
 local comms       = require("scada-common.comms")
+local constants   = require("scada-common.constants")
 local network     = require("scada-common.network")
 local ppm         = require("scada-common.ppm")
 local tcd         = require("scada-common.tcd")
@@ -75,7 +76,7 @@ local function handle_packet(packet)
 
                 if est_ack == ESTABLISH_ACK.ALLOW then
                     if type(config) == "table" and #config == 3 then
-                        local count_ok = is_int_min_max(config[1], 1, 4)
+                        local count_ok = is_int_min_max(config[1], 1, constants.MAX_UNITS)
                         local cool_ok = type(config[2]) == "table" and type(config[2].r_cool) == "table" and #config[2].r_cool == config[1]
 
                         if count_ok and cool_ok then
@@ -248,8 +249,8 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
     self.sv_skip = PushButton{parent=fac_c_1,x=44,y=14,text="Skip \x1a",callback=sv_skip,fg_bg=cpair(colors.black,colors.red),active_fg_bg=btn_act_fg_bg,dis_fg_bg=btn_dis_fg_bg}
     self.sv_next = PushButton{parent=fac_c_1,x=44,y=14,text="Next \x1a",callback=sv_next,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg,hidden=true}
 
-    TextBox{parent=fac_c_2,y=1,height=3,text="Please enter the number of reactors you have, also referred to as reactor units or 'units' for short. A maximum of 4 is currently supported."}
-    tool_ctl.num_units = NumberField{parent=fac_c_2,y=5,width=5,max_chars=2,default=ini_cfg.UnitCount,min=1,max=4,fg_bg=bw_fg_bg}
+    TextBox{parent=fac_c_2,y=1,height=3,text="Please enter the number of reactors you have, also referred to as reactor units or 'units' for short. A maximum of "..constants.MAX_UNITS.." is currently supported."}
+    tool_ctl.num_units = NumberField{parent=fac_c_2,y=5,width=5,max_chars=2,default=ini_cfg.UnitCount,min=1,max=constants.MAX_UNITS,fg_bg=bw_fg_bg}
     TextBox{parent=fac_c_2,x=7,y=5,text="reactors"}
     TextBox{parent=fac_c_2,y=7,height=3,text="This will decide how many monitors you need. If this does not match the supervisor's number of reactor units, the coordinator will not connect.",fg_bg=cpair(colors.yellow,colors._INHERIT)}
     TextBox{parent=fac_c_2,y=10,height=3,text="Since you skipped supervisor sync, the main monitor minimum height can't be determined precisely. It is marked with * on the next page.",fg_bg=g_lg_fg_bg}
@@ -258,7 +259,7 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
 
     local function submit_num_units()
         local count = tonumber(tool_ctl.num_units.get_value())
-        if count ~= nil and count > 0 and count < 5 then
+        if count ~= nil and count > 0 and count <= constants.MAX_UNITS then
             nu_error.hide(true)
             tmp_cfg.UnitCount = count
             tool_ctl.update_mon_reqs()

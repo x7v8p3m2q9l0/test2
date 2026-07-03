@@ -20,6 +20,7 @@ local backplane  = require("supervisor.backplane")
 local configure  = require("supervisor.configure")
 local databus    = require("supervisor.databus")
 local facility   = require("supervisor.facility")
+local failover   = require("supervisor.failover")
 local renderer   = require("supervisor.renderer")
 local supervisor = require("supervisor.supervisor")
 
@@ -134,7 +135,51 @@ local function main()
     end
 
     -- modem initialization
-    if not backplane.init(config) then return end
+    -- [NEW] failover-aware startup. when SV_SyncChannel is 0 (the default), this is a
+    -- single no-op branch that behaves exactly as before - existing configs and anyone
+    -- not using failover see zero behavior change. see supervisor/failover.lua for the
+    -- design rationale (in particular: why conflicts are never auto-resolved).
+    local sv_failover = nil
+    local failover_enabled = config.SV_SyncChannel ~= 0
+
+    if not failover_enabled then
+        if not backplane.init(config, true) then return end
+    else
+        -- open only the sync channel first; the command channel (SVR_Channel) stays
+        -- closed until this instance is confirmed/promoted to active
+        if not backplane.init(config, false) then return end
+
+        local sync_modem = ppm.get_modem(config.WiredModem)
+        if sync_modem == nil then sync_modem = ppm.get_wireless_modem() end
+
+        if sync_modem == nil then
+            println_ts("startup> no modem available for failover sync channel")
+            log.fatal("STARTUP: failover enabled but no modem found for SV_SyncChannel")
+            return
+        end
+
+        sv_failover = failover.new(sync_modem, config.SV_SyncChannel, config.SV_PeerGroup,
+            config.SV_Role, config.SV_FailoverTimeout)
+
+        if config.SV_Role == "PRIMARY" then
+            -- brief listen before claiming active status, in case a backup already
+            -- promoted while this computer was offline
+            if not sv_failover.startup_check(8) then
+                println_ts("startup> another supervisor is already active for this peer group, see log")
+                log.fatal("STARTUP: refusing to activate, conflicting active peer detected on startup")
+                return
+            end
+        else
+            -- BACKUP: block here, doing nothing but listening for the primary's
+            -- heartbeat, until either it's heard (stay passive, loop continues) or it
+            -- times out (promote and fall through to normal startup below)
+            println_ts("startup> starting as BACKUP, waiting for primary...")
+            sv_failover.wait_as_backup()
+            println_ts("startup> promoted to ACTIVE, continuing startup")
+        end
+
+        backplane.activate_command_channel(config)
+    end
 
     -- start UI
     local fp_ok, message = renderer.try_start_ui(config)
@@ -168,6 +213,10 @@ local function main()
         if heartbeat_toggle then databus.heartbeat() end
         heartbeat_toggle = not heartbeat_toggle
 
+        -- [NEW] send our own failover heartbeat if we're the active instance in a
+        -- failover-enabled facility; no-ops entirely when failover is disabled
+        if sv_failover ~= nil then sv_failover.tick_transmit() end
+
         -- iterate sessions
         svsessions.iterate_all()
 
@@ -197,9 +246,16 @@ local function main()
 
         -- handle event
         if event == "modem_message" then
-            -- got a packet
-            local packet = superv_comms.parse_packet(param1, param2, param3, param4, param5)
-            if packet then superv_comms.handle_packet(packet) end
+            -- [NEW] check for our own failover heartbeat traffic first; these arrive on
+            -- SyncChannel, a different channel than any SCADA protocol traffic, and are
+            -- fully consumed here rather than passed to the SCADA packet parser
+            local was_heartbeat = sv_failover ~= nil and sv_failover.handle_message(param2, param4)
+
+            if not was_heartbeat then
+                -- got a packet
+                local packet = superv_comms.parse_packet(param1, param2, param3, param4, param5)
+                if packet then superv_comms.handle_packet(packet) end
+            end
         elseif event == "timer" then
             -- pass this timer event onto the right handler
             if loop_clock.is_clock(param1) then

@@ -1,4 +1,5 @@
 local log          = require("scada-common.log")
+local constants    = require("scada-common.constants")
 local mqueue       = require("scada-common.mqueue")
 local ppm          = require("scada-common.ppm")
 local rsio         = require("scada-common.rsio")
@@ -52,7 +53,11 @@ return function(config, __shared_memory)
     --#region Redstone Interfaces
 
     local rs_rtus   = {} ---@type { name: string, hw_state: RTU_HW_STATE, rtu: rtu_rs_device, phy: table, banks: rtu_rs_definition[][] }[]
-    local all_conns = { [0] = {}, {}, {}, {}, {} }
+    -- [FIX] was a fixed literal { [0]={}, {}, {}, {}, {} } - exactly 5 slots (facility
+    -- + 4 units), silently too small once MAX_UNITS was raised past 4. Built dynamically
+    -- now so it always has one slot per possible unit plus the facility slot.
+    local all_conns = { [0] = {} }
+    for i = 1, constants.MAX_UNITS do all_conns[i] = {} end
 
     -- go through redstone definitions list
     for entry_idx = 1, #rtu_redstone do
@@ -64,7 +69,7 @@ return function(config, __shared_memory)
         local phy_name    = entry.relay or "local"
         local iface_name  = entry_iface_name(entry)
 
-        if util.is_int(entry.unit) and entry.unit > 0 and entry.unit < 5 then
+        if util.is_int(entry.unit) and entry.unit > 0 and entry.unit <= constants.MAX_UNITS then
             ---@cast for_reactor integer
             assignment = "reactor unit " .. entry.unit
         elseif entry.unit == nil then
@@ -252,7 +257,7 @@ return function(config, __shared_memory)
             if for_facility and for_reactor ~= 0 then
                 log_fail(util.c("uinit> device entry #", i, ": must only be for the facility"))
                 return false
-            elseif (not for_facility) and ((not util.is_int(for_reactor)) or (for_reactor < 1) or (for_reactor > 4)) then
+            elseif (not for_facility) and ((not util.is_int(for_reactor)) or (for_reactor < 1) or (for_reactor > constants.MAX_UNITS)) then
                 log_fail(util.c("uinit> device entry #", i, ": unit assignment ", for_reactor, " isn't vaild"))
                 return false
             else return true end

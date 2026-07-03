@@ -1,4 +1,5 @@
 local ppm         = require("scada-common.ppm")
+local constants   = require("scada-common.constants")
 local util        = require("scada-common.util")
 
 local core        = require("graphics.core")
@@ -236,7 +237,7 @@ function peripherals.create(tool_ctl, main_pane, cfg_sys, peri_cfg, style)
     self.p_idx = NumberField{parent=peri_c_4,x=31,y=4,width=4,max_chars=2,min=1,max=2,default=1,fg_bg=bw_fg_bg,dis_fg_bg=btn_dis_fg_bg}
     self.p_assign_btn = RadioButton{parent=peri_c_4,y=5,default=1,options={"the facility","reactor unit #"},callback=function(v)self.p_assign(v)end,radio_colors=cpair(colors.lightGray,colors.black),select_color=colors.purple}
 
-    self.p_unit = NumberField{parent=peri_c_4,x=23,y=4,width=4,max_chars=2,min=1,max=4,default=1,fg_bg=bw_fg_bg,dis_fg_bg=btn_dis_fg_bg}
+    self.p_unit = NumberField{parent=peri_c_4,x=23,y=4,width=4,max_chars=2,min=1,max=constants.MAX_UNITS,default=1,fg_bg=bw_fg_bg,dis_fg_bg=btn_dis_fg_bg}
     self.p_unit.disable()
 
     function self.p_assign(opt)
@@ -283,8 +284,8 @@ function peripherals.create(tool_ctl, main_pane, cfg_sys, peri_cfg, style)
         if util.table_contains(NEEDS_UNIT, peri_type) then
             if (peri_type == "dynamicValve" or peri_type == "environmentDetector" or peri_type == "environment_detector") and for_facility then
                 -- skip
-            elseif not (util.is_int(u) and u > 0 and u < 5) then
-                self.p_err.set_value("Unit ID must be within 1 to 4.")
+            elseif not (util.is_int(u) and u > 0 and u <= constants.MAX_UNITS) then
+                self.p_err.set_value("Unit ID must be within 1 to "..constants.MAX_UNITS..".")
                 self.p_err.show()
                 return
             else unit = u end

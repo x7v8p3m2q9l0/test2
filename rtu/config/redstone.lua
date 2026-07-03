@@ -133,7 +133,7 @@ local redstone = {}
 -- validate a redstone entry
 ---@param def rtu_rs_definition
 function redstone.validate(def)
-    return tri(PORT_DSGN[def.port] == 1, util.is_int(def.unit) and def.unit > 0 and def.unit <= 4, def.unit == nil) and
+    return tri(PORT_DSGN[def.port] == 1, util.is_int(def.unit) and def.unit > 0 and def.unit <= constants.MAX_UNITS, def.unit == nil) and
            rsio.is_valid_port(def.port) and
            rsio.is_valid_side(def.side) and
            (def.color == nil or (rsio.is_digital(def.port) and rsio.is_color(def.color)))
@@ -377,7 +377,7 @@ function redstone.create(tool_ctl, main_pane, cfg_sys, rs_cfg, style)
     local side = Radio2D{parent=rs_c_4,y=5,rows=1,columns=6,default=1,options=side_options,radio_colors=cpair(colors.lightGray,colors.black),select_color=colors.red}
 
     self.rs_cfg_unit_l = TextBox{parent=rs_c_4,x=25,y=7,width=7,text="Unit ID"}
-    self.rs_cfg_unit = NumberField{parent=rs_c_4,x=33,y=7,width=10,max_chars=2,min=1,max=4,fg_bg=bw_fg_bg}
+    self.rs_cfg_unit = NumberField{parent=rs_c_4,x=33,y=7,width=10,max_chars=2,min=1,max=constants.MAX_UNITS,fg_bg=bw_fg_bg}
 
     local function set_bundled(bundled)
         if bundled then self.rs_cfg_color.enable() else self.rs_cfg_color.disable() end
@@ -404,7 +404,7 @@ function redstone.create(tool_ctl, main_pane, cfg_sys, rs_cfg, style)
         local port = self.rs_cfg_port
         local u = tonumber(self.rs_cfg_unit.get_value())
 
-        if PORT_DSGN[port] == 0 or (util.is_int(u) and u > 0 and u < 5) then
+        if PORT_DSGN[port] == 0 or (util.is_int(u) and u > 0 and u <= constants.MAX_UNITS) then
             rs_err.hide(true)
 
             if port >= 0 then

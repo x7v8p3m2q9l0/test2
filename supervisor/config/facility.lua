@@ -1,8 +1,10 @@
 local util        = require("scada-common.util")
+local constants   = require("scada-common.constants")
 
 local core        = require("graphics.core")
 
 local Div         = require("graphics.elements.Div")
+local ListBox     = require("graphics.elements.ListBox")
 local MultiPane   = require("graphics.elements.MultiPane")
 local TextBox     = require("graphics.elements.TextBox")
 
@@ -189,10 +191,14 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
 
     TextBox{parent=fac_cfg,y=2,text=" Facility Configuration",fg_bg=cpair(colors.black,colors.yellow)}
 
+    -- [NEW] forward declaration: assigned in the Facility Tanks Option region below,
+    -- but needs to be callable from the earlier Unit Count submit handler
+    local _update_fac_tank_availability = function() end
+
     --#region Unit Count
 
-    TextBox{parent=fac_c_1,y=1,height=3,text="Please enter the number of reactors you have, also referred to as reactor units or 'units' for short. A maximum of 4 is currently supported."}
-    tool_ctl.num_units = NumberField{parent=fac_c_1,y=5,width=5,max_chars=2,default=ini_cfg.UnitCount,min=1,max=4,fg_bg=bw_fg_bg}
+    TextBox{parent=fac_c_1,y=1,height=3,text="Please enter the number of reactors you have, also referred to as reactor units or 'units' for short. A maximum of "..constants.MAX_UNITS.." is currently supported."}
+    tool_ctl.num_units = NumberField{parent=fac_c_1,y=5,width=5,max_chars=2,default=ini_cfg.UnitCount,min=1,max=constants.MAX_UNITS,fg_bg=bw_fg_bg}
     TextBox{parent=fac_c_1,x=7,y=5,text="reactors"}
     TextBox{parent=fac_c_1,y=7,height=3,text="If you already configured your coordinator, make sure you update the coordinator's configured unit count.",fg_bg=cpair(colors.yellow,colors._INHERIT)}
 
@@ -200,14 +206,14 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
 
     local function submit_num_units()
         local count = tonumber(tool_ctl.num_units.get_value())
-        if count ~= nil and count > 0 and count < 5 then
+        if count ~= nil and count > 0 and count <= constants.MAX_UNITS then
             nu_error.hide(true)
             tmp_cfg.UnitCount = count
 
             local c_confs = tool_ctl.cooling_elems
             local a_confs = tool_ctl.aux_cool_elems
 
-            for i = 2, 4 do
+            for i = 2, constants.MAX_UNITS do
                 if count >= i then
                     c_confs[i].line.show()
                     a_confs[i].line.show()
@@ -216,6 +222,10 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
                     a_confs[i].line.hide(true)
                 end
             end
+
+            -- [NEW] the facility tank mode visualizer can't represent more than 4
+            -- units, so keep its availability in sync with whatever count was just set
+            _update_fac_tank_availability()
 
             fac_pane.set_value(2)
         else nu_error.show() end
@@ -230,7 +240,14 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
     TextBox{parent=fac_c_2,y=1,height=4,text="Please provide the reactor cooling configuration below. This includes the number of turbines, boilers, and if that reactor has a connection to a dynamic tank for emergency coolant."}
     TextBox{parent=fac_c_2,y=6,text="UNIT    TURBINES   BOILERS   HAS TANK CONNECTION?",fg_bg=g_lg_fg_bg}
 
-    for i = 1, 4 do
+    -- [FIX] previously a fixed Div per row at an absolute y=7+i position, which only had
+    -- room for 6 rows before colliding with the Back/Next buttons at y=14. Rows are now
+    -- children of a scrollable ListBox instead, so this screen supports any MAX_UNITS
+    -- without a fixed row-count ceiling - the ListBox auto-stacks children and provides
+    -- scroll arrows/bar once content exceeds the visible area.
+    local cool_list = ListBox{parent=fac_c_2,y=7,height=6,width=49,scroll_height=100,fg_bg=bw_fg_bg,nav_fg_bg=g_lg_fg_bg,nav_active=cpair(colors.black,colors.gray)}
+
+    for i = 1, constants.MAX_UNITS do
         local num_t, num_b, has_t = 1, 0, false
 
         if ini_cfg.CoolingConfig[i] then
@@ -240,7 +257,7 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
             has_t = conf.TankConnection == true
         end
 
-        local line = Div{parent=fac_c_2,y=7+i,height=1}
+        local line = Div{parent=cool_list,height=1}
 
         TextBox{parent=line,text="Unit "..i,width=6}
         local turbines = NumberField{parent=line,x=9,y=1,width=5,max_chars=2,default=num_t,min=1,max=3,fg_bg=bw_fg_bg}
@@ -315,7 +332,38 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
 
     tool_ctl.en_fac_tanks = Checkbox{parent=fac_c_3,y=12,label="Use Facility Dynamic Tanks",default=ini_cfg.FacilityTankMode>0,box_fg_bg=cpair(colors.yellow,colors.black)}
 
+    -- [NEW] the facility tank mode visual layout screen (fac_c_5) is hand-built for
+    -- exactly 4 units and cannot represent more without a real redesign. rather than
+    -- let a >4 unit facility reach a broken/incomplete visualizer, disable this path
+    -- entirely above 4 units and steer toward per-unit tank mode, which is fully
+    -- dynamic and unaffected by this limitation.
+    local fac_tank_unavailable = TextBox{parent=fac_c_3,y=12,height=2,
+        text="Facility Dynamic Tanks are only available for facilities of 4 or fewer units. Please assign one dynamic tank per reactor unit instead.",
+        fg_bg=cpair(colors.red,colors.black)}
+    fac_tank_unavailable.hide(true)
+
+    local function _update_fac_tank_availability_impl()
+        if tmp_cfg.UnitCount > 4 then
+            tool_ctl.en_fac_tanks.set_value(false)
+            tool_ctl.en_fac_tanks.disable()
+            tool_ctl.en_fac_tanks.hide(true)
+            fac_tank_unavailable.show()
+        else
+            tool_ctl.en_fac_tanks.enable()
+            tool_ctl.en_fac_tanks.show()
+            fac_tank_unavailable.hide(true)
+        end
+    end
+
+    -- [NEW] fill in the forward-declared upvalue so the earlier Unit Count screen's
+    -- submit handler can call the real implementation
+    _update_fac_tank_availability = _update_fac_tank_availability_impl
+
     local function submit_en_fac_tank()
+        -- [NEW] hard guard: never allow facility tank mode above 4 units, even if
+        -- tmp_cfg.UnitCount changed after this checkbox was last interacted with
+        if tmp_cfg.UnitCount > 4 then tool_ctl.en_fac_tanks.set_value(false) end
+
         if tool_ctl.en_fac_tanks.get_value() then
             fac_pane.set_value(4)
             tmp_cfg.FacilityTankMode = tri(tmp_cfg.FacilityTankMode == 0, 1, math.min(8, math.max(1, ini_cfg.FacilityTankMode)))
@@ -690,8 +738,12 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
 
     TextBox{parent=fac_c_8,height=5,text="Auxiliary water coolant can be enabled for units to provide extra water during turbine ramp-up. For water cooled reactors, this goes to the reactor. For sodium cooled reactors, water goes to the boiler."}
 
-    for i = 1, 4 do
-        local line = Div{parent=fac_c_8,y=7+i,height=1}
+    -- [FIX] same conversion as Cooling Configuration above - ListBox instead of a fixed
+    -- absolute-position row per unit, so this screen also supports any MAX_UNITS.
+    local aux_list = ListBox{parent=fac_c_8,y=7,height=6,width=49,scroll_height=100,fg_bg=bw_fg_bg,nav_fg_bg=g_lg_fg_bg,nav_active=cpair(colors.black,colors.gray)}
+
+    for i = 1, constants.MAX_UNITS do
+        local line = Div{parent=aux_list,height=1}
 
         TextBox{parent=line,text="Unit "..i.." -",width=8}
         local aux_cool = Checkbox{parent=line,x=10,y=1,label="Has Auxiliary Coolant",default=ini_cfg.AuxiliaryCoolant[i],box_fg_bg=cpair(colors.yellow,colors.black)}

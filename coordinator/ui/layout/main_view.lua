@@ -37,38 +37,29 @@ local function init(main)
     ping.register(fac.ps, "sv_ping", ping.update)
     datetime.register(fac.ps, "date_time", datetime.set_value)
 
-    ---@type Div, Div, Div, Div
-    local uo_1, uo_2, uo_3, uo_4
-
+    -- [FIX] previously hardcoded to exactly 2 columns x 2 rows (4 units max), with the
+    -- 2nd row's 2nd column gated by "== 4" rather than a loop. Rebuilt as a genuine
+    -- N-row loop: 2 columns wide, as many rows as needed for fac.num_units. Each row's
+    -- height is the max of its two column heights, same accumulation approach the
+    -- original 2-row version used, just generalized. The existing vertical-space assert
+    -- below already anticipated needing more rows ("add an additional row of monitors"),
+    -- so this completes what that message implied rather than introducing a new pattern.
     local cnc_y_start = 3
-    local row_1_height = 0
+    local num_rows = math.ceil(fac.num_units / 2)
 
-    -- unit overviews
-    if fac.num_units >= 1 then
-        uo_1 = unit_overview(main, 2, 3, units[1])
-        row_1_height = uo_1.get_height()
-    end
+    for row = 1, num_rows do
+        local left_idx = ((row - 1) * 2) + 1
+        local right_idx = left_idx + 1
 
-    if fac.num_units >= 2 then
-        uo_2 = unit_overview(main, 84, 3, units[2])
-        row_1_height = math.max(row_1_height, uo_2.get_height())
-    end
+        local uo_left = unit_overview(main, 2, cnc_y_start, units[left_idx])
+        local row_height = uo_left.get_height()
 
-    cnc_y_start = cnc_y_start + row_1_height + 1
-
-    util.nop()
-
-    if fac.num_units >= 3 then
-        -- base offset 3, spacing 1, max height of units 1 and 2
-        local row_2_offset = cnc_y_start
-
-        uo_3 = unit_overview(main, 2, row_2_offset, units[3])
-        cnc_y_start = row_2_offset + uo_3.get_height() + 1
-
-        if fac.num_units == 4 then
-            uo_4 = unit_overview(main, 84, row_2_offset, units[4])
-            cnc_y_start = math.max(cnc_y_start, row_2_offset + uo_4.get_height() + 1)
+        if right_idx <= fac.num_units then
+            local uo_right = unit_overview(main, 84, cnc_y_start, units[right_idx])
+            row_height = math.max(row_height, uo_right.get_height())
         end
+
+        cnc_y_start = cnc_y_start + row_height + 1
 
         util.nop()
     end

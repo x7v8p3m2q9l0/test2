@@ -1,5 +1,6 @@
 
 local comms       = require("scada-common.comms")
+local constants   = require("scada-common.constants")
 local log         = require("scada-common.log")
 local network     = require("scada-common.network")
 local ppm         = require("scada-common.ppm")
@@ -587,8 +588,8 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, ext, style)
 
         -- if there are extra monitor entries, delete them now
         -- not doing so will cause the app to fail to start
-        if tool_ctl.is_int_min_max(tmp_cfg.UnitCount, 1, 4) then
-            for i = tmp_cfg.UnitCount + 1, 4 do tmp_cfg.UnitDisplays[i] = nil end
+        if tool_ctl.is_int_min_max(tmp_cfg.UnitCount, 1, constants.MAX_UNITS) then
+            for i = tmp_cfg.UnitCount + 1, constants.MAX_UNITS do tmp_cfg.UnitDisplays[i] = nil end
         end
 
         if settings.get("ControlStates") == nil then

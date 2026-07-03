@@ -6,6 +6,8 @@ A practical walkthrough for wiring up and configuring this SCADA system against 
 
 ## 1. What you need before starting
 
+**Facility size:** this patched version supports up to **8 reactor units** per facility (raised from the upstream limit of 4), with the configurator's cooling/coolant screens and the coordinator's main overview monitor both genuinely scaling to that count rather than being hardcoded. See §8 for multi-supervisor options if you want to split a large facility's workload across more than one supervisor, or add a hot-standby backup.
+
 **Mods** (confirm versions in-game, not just from memory):
 - CC: Tweaked
 - Mekanism v10.1 or later — earlier versions don't have full CC:Tweaked peripheral support
@@ -139,3 +141,30 @@ If something won't link, the most common causes in order of likelihood are: an u
 - If you're running multiple reactors, configure priority groups so the supervisor knows which reactors to ramp first when facility demand changes.
 - Review the alarm thresholds in the facility configuration — the defaults are reasonable starting points but you may want tighter margins for a highly-optimized build or looser ones for a more forgiving low-tier setup.
 - Keep the patched `preflight.lua` around — it's harmless to re-run any time you're troubleshooting a peripheral that isn't reporting.
+
+### The one remaining display limitation
+
+The supervisor's optional **Facility Tank Mode** (shared dynamic tanks across multiple units, with a visual pipe-diagram picker in the configurator) is capped at 4 units and simply won't offer that option above 4 — you'll use per-unit dedicated tanks instead, which work fine for any count and is the more common setup anyway. Everything else — comms, RPS, PID control, alarms, RTU data flow, the coordinator's main overview monitor, flow monitor, and per-unit monitors — scales correctly to the full 8-unit cap.
+
+## 8. Running more than one supervisor
+
+There are two different reasons you might want more than one supervisor, and they're solved two different ways.
+
+### Splitting a large facility's workload (recommended approach)
+
+If you just want to reduce how much one supervisor computer has to handle — say, an 8-unit facility split into two groups of 4 — the straightforward and fully-supported way to do this today is to run **two completely independent supervisor + coordinator stacks**, each with its own disjoint set of reactor units, RTUs, and PLCs. Supervisor A handles units 1-4 with its own coordinator and monitors; Supervisor B handles units 5-8 the same way. Nothing new to install — this is exactly how the system already works, just run twice.
+
+This isn't a limitation-driven workaround: a single coordinator screen that merges live data from multiple independent supervisors into one combined view would need a real rearchitecture of the coordinator's core data model, which currently builds one shared dataset from a single supervisor at startup and has every screen read from it for the coordinator's entire runtime. That's not something to redesign through unverified patches when a mistake would break the coordinator's connection to everything, not just the new feature — so it isn't included here. Running independent stacks per unit group achieves the actual goal (splitting workload, isolating failure to one group of reactors) without that risk.
+
+### Primary/backup failover for the same units
+
+If instead you want a genuine hot-standby — a second supervisor ready to take over the *same* units if the first one dies — this patched version adds that as an opt-in feature. Run `failover_setup.lua` (included in this bundle) on each supervisor involved; it asks a few questions and writes the right settings directly (don't use CC's built-in `set` command for this — this app stores its config in a custom `/supervisor.settings` file that `set` doesn't touch).
+
+How it behaves:
+
+- The **primary** supervisor operates completely normally, and also broadcasts a lightweight heartbeat on a dedicated sync channel every few seconds.
+- A **backup** supervisor starts up completely passive: it does not open the channel PLCs, RTUs, or the coordinator actually talk on, so it is structurally incapable of contending with the primary for the same devices — it simply isn't listening. It only listens for the primary's heartbeat.
+- If the backup stops hearing that heartbeat for longer than its configured timeout, it promotes itself: opens its command channel and starts operating normally, exactly as the primary would.
+- If a restarted primary or a promoted backup ever hears *another* active heartbeat on the same peer group, it does **not** try to resolve that automatically — it logs a clear conflict warning and keeps doing what it was already doing, requiring you to manually stop one of them. This is deliberate: automatically arbitrating which of two live supervisors should back off, over a real network, without the ability to test the timing live, is exactly the kind of decision that's safer left to a person for something controlling a reactor.
+
+This means failover gives you fast, automatic protection against a primary going down, but recovery from an actual conflict (e.g. after fixing whatever took the primary offline) is a manual step by design, not an oversight.

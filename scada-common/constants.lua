@@ -102,6 +102,25 @@ constants.EXTREME_RADIATION   = 100.0
 constants.WARN_RTT = 300 -- 2x as long as expected w/ 0 ping
 constants.HIGH_RTT = 500 -- 3.33x as long as expected w/ 0 ping
 
+-- [NEW] maximum number of reactor units a single facility can be configured with.
+-- previously this was hardcoded to 4 in over a dozen places across supervisor,
+-- coordinator, and RTU validation/config code, with no protocol-level reason for
+-- the limit (the reactor-plc's UnitID field was never bounded at all).
+--
+-- raised to 8: the Cooling Configuration and Auxiliary Coolant screens (supervisor
+-- configurator) now use a scrollable ListBox instead of fixed-position rows, and
+-- the coordinator's main overview monitor now lays out unit panels in a genuine
+-- N-row loop instead of a hardcoded 2x2 grid - both of the previous ceilings on
+-- unit count have been addressed rather than just raised.
+--
+-- the "Facility Tank Mode" shared-tank visual screen still has separate, more
+-- involved hand-built pipe-diagram logic that isn't safe to extend without a
+-- real redesign; it remains capped at 4 units regardless of this constant and
+-- is disabled in the configurator above that (see supervisor/config/facility.lua).
+-- Per-unit dedicated tank mode is unaffected by that limitation and works for
+-- any count up to MAX_UNITS.
+constants.MAX_UNITS = 8
+
 --#endregion
 
 --#region Mekanism Configuration Constants

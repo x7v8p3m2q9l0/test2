@@ -73,6 +73,14 @@ function supervisor.load_config()
     config.CRD_Channel = settings.get("CRD_Channel")
     config.PKT_Channel = settings.get("PKT_Channel")
 
+    -- [NEW] primary/backup failover settings. defaults preserve exact prior behavior
+    -- (a lone PRIMARY with failover effectively disabled) for any existing config
+    -- that predates this feature and never set these fields.
+    config.SV_Role = settings.get("SV_Role", "PRIMARY")
+    config.SV_SyncChannel = settings.get("SV_SyncChannel", 0)
+    config.SV_PeerGroup = settings.get("SV_PeerGroup", 0)
+    config.SV_FailoverTimeout = settings.get("SV_FailoverTimeout", 15)
+
     config.PLC_Timeout = settings.get("PLC_Timeout")
     config.RTU_Timeout = settings.get("RTU_Timeout")
     config.CRD_Timeout = settings.get("CRD_Timeout")
@@ -91,7 +99,7 @@ function supervisor.load_config()
     local cfv = util.new_validator()
 
     cfv.assert_type_int(config.UnitCount)
-    cfv.assert_range(config.UnitCount, 1, 4)
+    cfv.assert_range(config.UnitCount, 1, constants.MAX_UNITS)
 
     cfv.assert_type_table(config.CoolingConfig)
     cfv.assert_type_int(config.FacilityTankMode)
@@ -142,6 +150,21 @@ function supervisor.load_config()
     cfv.assert_channel(config.RTU_Channel)
     cfv.assert_channel(config.CRD_Channel)
     cfv.assert_channel(config.PKT_Channel)
+
+    -- [NEW] failover field validation. SyncChannel of 0 means failover is disabled
+    -- (the common case / backward-compatible default), so it's exempted from the
+    -- channel range check that a real channel value would need to pass.
+    cfv.assert_type_str(config.SV_Role)
+    assert(config.SV_Role == "PRIMARY" or config.SV_Role == "BACKUP",
+        "startup> SV_Role must be PRIMARY or BACKUP")
+    cfv.assert_type_int(config.SV_SyncChannel)
+    if config.SV_SyncChannel ~= 0 then
+        cfv.assert_channel(config.SV_SyncChannel)
+        assert(config.SV_SyncChannel ~= config.SVR_Channel, "startup> SV_SyncChannel must differ from SVR_Channel")
+    end
+    cfv.assert_type_int(config.SV_PeerGroup)
+    cfv.assert_type_num(config.SV_FailoverTimeout)
+    cfv.assert_min(config.SV_FailoverTimeout, 5)
 
     cfv.assert_type_num(config.PLC_Timeout)
     cfv.assert_min(config.PLC_Timeout, 2)
