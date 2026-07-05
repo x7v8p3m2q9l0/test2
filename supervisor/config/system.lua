@@ -702,6 +702,16 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, fac_pane, mek_pane, s
             return
         end
 
+        -- [NEW] the legacy 1-8 mode presets only support exactly 4 units (their
+        -- internal logic hardcodes positions 1-4 and would silently leave units 5+
+        -- unprocessed). facilities of more than 4 units using facility tank mode
+        -- must be configured interactively instead, which uses FacilityTankGroups.
+        if tmp_cfg.FacilityTankMode > 0 and tmp_cfg.UnitCount > 4 then
+            import_err_msg.set_value("FAC_TANK_MODE (legacy 1-8 presets) only supports facilities of exactly 4 units. For more units, configure Facility Dynamic Tanks interactively instead of importing FAC_TANK_MODE/FAC_TANK_DEFS.")
+            main_pane.set_value(9)
+            return
+        end
+
         if config.FAC_TANK_MODE > 0 then
             if config.FAC_TANK_DEFS == nil or tmp_cfg.UnitCount ~= #config.FAC_TANK_DEFS then
                 import_err_msg.set_value("Facility tank definitions table length must match the number of units when using facility tanks.")

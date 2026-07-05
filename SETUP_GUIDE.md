@@ -6,7 +6,7 @@ A practical walkthrough for wiring up and configuring this SCADA system against 
 
 ## 1. What you need before starting
 
-**Facility size:** this patched version supports up to **8 reactor units** per facility (raised from the upstream limit of 4), with the configurator's cooling/coolant screens and the coordinator's main overview monitor both genuinely scaling to that count rather than being hardcoded. See §8 for multi-supervisor options if you want to split a large facility's workload across more than one supervisor, or add a hot-standby backup.
+**Facility size:** this patched version supports up to **8 reactor units** per facility (raised from the upstream limit of 4), with the configurator's cooling/coolant/tank screens and the coordinator's main overview monitor all genuinely scaling to that count rather than being hardcoded. See §9 for multi-supervisor options if you want to split a large facility's workload across more than one supervisor, or add a hot-standby backup, and §8 for custom automation rules.
 
 **Mods** (confirm versions in-game, not just from memory):
 - CC: Tweaked
@@ -142,11 +142,67 @@ If something won't link, the most common causes in order of likelihood are: an u
 - Review the alarm thresholds in the facility configuration — the defaults are reasonable starting points but you may want tighter margins for a highly-optimized build or looser ones for a more forgiving low-tier setup.
 - Keep the patched `preflight.lua` around — it's harmless to re-run any time you're troubleshooting a peripheral that isn't reporting.
 
-### The one remaining display limitation
+### Facility Dynamic Tanks for 5-8 unit facilities
 
-The supervisor's optional **Facility Tank Mode** (shared dynamic tanks across multiple units, with a visual pipe-diagram picker in the configurator) is capped at 4 units and simply won't offer that option above 4 — you'll use per-unit dedicated tanks instead, which work fine for any count and is the more common setup anyway. Everything else — comms, RPS, PID control, alarms, RTU data flow, the coordinator's main overview monitor, flow monitor, and per-unit monitors — scales correctly to the full 8-unit cap.
+The supervisor's shared "Facility Dynamic Tanks" option now works for any unit count up to 8, not just 4. Facilities of 4 or fewer units still see the original visual pipe-diagram picker with its 8 preset layouts, completely unchanged. Facilities of 5 or more units get a different screen instead — a simple list where you assign each unit's tank a group number, and any units sharing the same number share one physical tank. This is actually more flexible than the original 4-unit presets (which could only group contiguous units); groups don't need to be contiguous, so unit 1 and unit 3 can share a tank while unit 2 has its own.
 
-## 8. Running more than one supervisor
+This required real verification, not just extending a pattern: the legacy 4-unit mode logic turned out to have several non-obvious edge cases for unusual tank configurations that don't reduce to a clean general formula, so rather than risk quietly changing what an existing saved configuration means, the original 4-unit code is left completely untouched and the new mechanism only applies to facilities of more than 4 units, which never had this option before. The equivalence and correctness of the underlying logic in both paths was checked programmatically (`build/verify_tank_modes.lua`), not just by inspection.
+
+## 8. Custom automation rules
+
+This patched version can run custom "when X happens, do Y" rules on the supervisor, written as real Lua files rather than a fixed schema — this is a Lua-based platform already, and a rigid JSON format didn't do it justice.
+
+### Setting it up
+
+Copy the files from `automation.examples/` into a directory named `/automation` on your supervisor computer (adjacent to `startup.lua`), edit them to suit your facility, and restart the supervisor. An empty or missing directory means automation is simply disabled — this is fully opt-in.
+
+Each rule is a `.lua` file that returns a table:
+
+```lua
+return {
+    id = "unit1_high_temp_warning",
+    enabled = true,
+    cooldown_s = 30,
+
+    trigger = function(api)
+        local temp = api.unit(1).temp()
+        return temp ~= nil and temp > 1100
+    end,
+
+    action = function(api)
+        api.warn("Unit 1 temperature above 1100K, approaching RPS trip threshold")
+    end
+}
+```
+
+`trigger` is checked every tick (subject to `cooldown_s`); when it returns true, `action` runs once, immediately after. Because this is ordinary Lua, you can combine conditions with `and`/`or`, keep your own local state between calls (a closure works fine, see `automation.examples/hourly_status_log.lua` for a periodic rule built entirely out of a local timestamp variable), loop over units, or do anything else the logic actually needs — there's no fixed set of trigger types to work around.
+
+### What `api` gives you
+
+See `AUTOMATION_API.md` for the complete reference — every function, every valid redstone port and alarm name, and a working example for each. The short version:
+
+- `api.unit(n)` — a handle for one reactor unit: `.temp()`, `.damage()`, `.waste_fill()`, `.coolant_fill()`, `.heated_coolant_fill()`, `.fuel_fill()`, `.burn_rate()`, `.heating_rate()`, `.alarm_tripped(name)`, plus the actions `.scram()`, `.ack_alarm(name)`, `.ack_all()`, and unit-scoped redstone via `.redstone_read(port)`/`.redstone_write(port, value)`.
+- `api.facility.energy_fill()` — the induction matrix's current charge fraction, if one is connected.
+- `api.redstone.read(port_name)` / `api.redstone.write(port_name, value)` / `api.redstone.write_analog(port_name, value, min, max)` — facility-level redstone ports.
+- `api.log(message)` / `api.warn(message)` — writes to the supervisor log; every rule that fires also gets an automatic log line regardless, so you should never have to wonder whether "the automation did that."
+- `api.tone(name)` — see the limitation below before relying on this for anything.
+- `api.time_ms()` — for building your own interval/periodic logic, as in the hourly-log example.
+
+### Why rule files run in their own environment
+
+Each file loads with its own restricted set of globals (`math`, `string`, `table`, the usual control-flow basics, and `api`) rather than the full ordinary Lua environment. This isn't a security boundary against an untrusted author — whoever writes a rule file already has complete Lua access to every file on this computer, the same as any other program here. It's for the same reason CC:Tweaked runs every program this way: one rule's stray global can't leak into another's, a typo'd reference fails with a clear error naming the exact file instead of silently misbehaving, and a broken rule is isolated and reported by name rather than taking the others down with it. A rule that genuinely needs something outside `api` can always be written as a change to the supervisor's own source instead — which was always true, and isn't something this feature needs to work around.
+
+### What the action set deliberately doesn't include
+
+The api's actions stop short of anything that changes how a reactor is being steered. A SCRAM is included because reactors are designed to handle one safely at any time — that's the entire purpose of RPS — so it's reasonable to let a rule trigger one. Setting burn rate, changing RPS trip thresholds, or changing waste mode aren't exposed, because those interact with the existing automatic control loop in ways that are much harder to reason about safely for logic someone wrote for a specific, different situation. If you genuinely need that, it deserves a more careful, purpose-built design, not a quick addition to a general rule's action list.
+
+One real limitation worth knowing: `api.tone()` produces a brief one-tick audio pulse, not a sustained alarm — the facility's existing alarm system fully recomputes what should be playing every single tick, so a custom tone gets overwritten almost immediately unless the rule keeps re-firing. For anything that needs to keep alerting until someone deals with it, trip an actual alarm condition or drive an external siren through `api.redstone.write` instead.
+
+### A note on the included examples
+
+`automation.examples/` ships six rules demonstrating the full range of what this can do: a straightforward threshold warning, a level-based redstone indicator (correctly re-asserting its output every check rather than pulsing once), a cross-unit multi-condition SCRAM, a fully custom time-interval rule built from nothing but a local variable and `api.time_ms()`, a unit-scoped redstone/alarm-acknowledgement example, and an analog redstone meter with a custom tone. The cross-unit SCRAM and alarm-acknowledgement examples ship **disabled** on purpose — they're there to show what's possible, not as default policy for your facility, and you should treat them as starting points to adapt rather than something to enable verbatim.
+
+## 9. Running more than one supervisor
 
 There are two different reasons you might want more than one supervisor, and they're solved two different ways.
 

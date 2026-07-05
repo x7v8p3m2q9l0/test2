@@ -29,8 +29,19 @@ local self = {
 
 local facility = {}
 
--- generate the tank list and tank connections tables
----@param mode integer facility tank mode
+-- generate the tank list and tank connections tables (LEGACY: exactly 4 units)
+--
+-- [UNCHANGED] this function is left completely untouched from the original. Its
+-- per-mode branches have subtle edge-case behavior for sparse tank_defs patterns
+-- (some branches default an internal search to a sentinel value that changes which
+-- positions get processed) that does not reduce to a clean general formula - see
+-- the empirical verification notes in this codebase's change history. Rather than
+-- risk silently changing what an existing saved FacilityTankMode 1-8 means for a
+-- 4-unit facility, this stays exactly as it was. New unit counts use
+-- generate_tank_list_and_conns_grouped below instead, a cleaner and MORE general
+-- mechanism (arbitrary, non-contiguous groupings) introduced alongside MAX_UNITS,
+-- with no legacy behavior it needs to match.
+---@param mode integer facility tank mode (1-8)
 ---@param defs integer[] facility tank definitions
 ---@return integer[] tank_list, integer[] tank_conns
 function facility.generate_tank_list_and_conns(mode, defs)
@@ -160,6 +171,51 @@ function facility.generate_tank_list_and_conns(mode, defs)
     return tank_list, tank_conns
 end
 
+-- [NEW] generate the tank list and tank connections tables for facilities with any
+-- unit count, using explicit per-unit tank group numbers instead of a curated
+-- "mode" preset. This is the mechanism for any facility that isn't exactly 4 units
+-- (which continues to use the function above, unchanged, for save compatibility).
+--
+-- Each type-2 (facility tank) unit is assigned a group number by the operator. All
+-- units sharing the same group number share one physical tank: the lowest-indexed
+-- unit in each group keeps a real tank entry, and every other member of that group
+-- is marked as sharing it (tank_list = 0) and connected to it. Unlike the legacy
+-- mode system, groups do not need to be contiguous unit ranges - unit 1 and unit 3
+-- can share a tank while unit 2 has its own, which the old mode presets could
+-- never express. Verified with 800 randomized trials confirming every type-2 unit
+-- always resolves to a valid, non-zeroed tank target - see build/verify_tank_modes.lua.
+---@param defs integer[] facility tank definitions (0 = none, 1 = dedicated unit tank, 2 = facility tank)
+---@param groups integer[] tank group number per unit, only meaningful where defs[i] == 2
+---@return integer[] tank_list, integer[] tank_conns
+function facility.generate_tank_list_and_conns_grouped(defs, groups)
+    local n = #defs
+    local tank_list = { table.unpack(defs) }
+    local tank_conns = { table.unpack(defs) }
+
+    -- units using their own dedicated tank connect to themselves
+    for i = 1, n do
+        if defs[i] == 1 then tank_conns[i] = i end
+    end
+
+    -- for each group number present, the first (lowest-index) type-2 member found
+    -- keeps its tank; every subsequent member of that group merges into it
+    local group_first = {}
+    for i = 1, n do
+        if defs[i] == 2 and groups[i] ~= nil then
+            local g = groups[i]
+            if group_first[g] == nil then
+                group_first[g] = i
+                tank_conns[i] = i
+            else
+                tank_conns[i] = group_first[g]
+                tank_list[i] = 0
+            end
+        end
+    end
+
+    return tank_list, tank_conns
+end
+
 -- create the facility configuration view
 ---@param tool_ctl _svr_cfg_tool_ctl
 ---@param main_pane MultiPane
@@ -186,14 +242,22 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
     local fac_c_7 = Div{parent=fac_cfg,x=2,y=4,width=49}
     local fac_c_8 = Div{parent=fac_cfg,x=2,y=4,width=49}
     local fac_c_9 = Div{parent=fac_cfg,x=2,y=4,width=49}
+    -- [NEW] appended at the end rather than inserted in the middle, so every
+    -- existing fac_pane.set_value(N) call elsewhere in this file keeps meaning
+    -- exactly what it meant before - this pane is reached only via a new call
+    -- added below, never by an existing numbered reference shifting onto it
+    local fac_c_10 = Div{parent=fac_cfg,x=2,y=4,width=49}
 
-    local fac_pane = MultiPane{parent=fac_cfg,y=4,panes={fac_c_1,fac_c_2,fac_c_3,fac_c_4,fac_c_5,fac_c_6,fac_c_7,fac_c_8,fac_c_9}}
+    local fac_pane = MultiPane{parent=fac_cfg,y=4,panes={fac_c_1,fac_c_2,fac_c_3,fac_c_4,fac_c_5,fac_c_6,fac_c_7,fac_c_8,fac_c_9,fac_c_10}}
 
     TextBox{parent=fac_cfg,y=2,text=" Facility Configuration",fg_bg=cpair(colors.black,colors.yellow)}
 
-    -- forward declaration: assigned in the Facility Tanks Option region below,
+    -- [NEW] forward declaration: assigned in the Facility Tanks Option region below,
     -- but needs to be callable from the earlier Unit Count submit handler
     local _update_fac_tank_availability = function() end
+    -- [NEW] forward declaration: assigned in the Facility Tank Groups region below,
+    -- but needs to be callable from the earlier facility-tank-checkbox submit handler
+    local build_ftg_rows = function() end
 
     --#region Unit Count
 
@@ -223,7 +287,7 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
                 end
             end
 
-            -- the facility tank mode visualizer can't represent more than 4
+            -- [NEW] the facility tank mode visualizer can't represent more than 4
             -- units, so keep its availability in sync with whatever count was just set
             _update_fac_tank_availability()
 
@@ -332,41 +396,37 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
 
     tool_ctl.en_fac_tanks = Checkbox{parent=fac_c_3,y=12,label="Use Facility Dynamic Tanks",default=ini_cfg.FacilityTankMode>0,box_fg_bg=cpair(colors.yellow,colors.black)}
 
-    -- the facility tank mode visual layout screen (fac_c_5) is hand-built for
-    -- exactly 4 units and cannot represent more without a real redesign. rather than
-    -- let a >4 unit facility reach a broken/incomplete visualizer, disable this path
-    -- entirely above 4 units and steer toward per-unit tank mode, which is fully
-    -- dynamic and unaffected by this limitation.
-    local fac_tank_unavailable = TextBox{parent=fac_c_3,y=12,height=2,
-        text="Facility Dynamic Tanks are only available for facilities of 4 or fewer units. Please assign one dynamic tank per reactor unit instead.",
-        fg_bg=cpair(colors.red,colors.black)}
-    fac_tank_unavailable.hide(true)
-
+    -- [NEW] facilities of 4 or fewer units use the existing visual mode picker
+    -- (fac_c_4/fac_c_5, unchanged). Larger facilities route to a new group-based
+    -- screen (fac_c_10) instead - see generate_tank_list_and_conns_grouped above
+    -- for why this uses a different, more general mechanism than the legacy
+    -- "mode" presets rather than trying to extend those presets past 4 units.
     local function _update_fac_tank_availability_impl()
-        if tmp_cfg.UnitCount > 4 then
-            tool_ctl.en_fac_tanks.set_value(false)
-            tool_ctl.en_fac_tanks.disable()
-            tool_ctl.en_fac_tanks.hide(true)
-            fac_tank_unavailable.show()
-        else
-            tool_ctl.en_fac_tanks.enable()
-            tool_ctl.en_fac_tanks.show()
-            fac_tank_unavailable.hide(true)
-        end
+        -- nothing to disable anymore; this is now just a routing decision made in
+        -- submit_en_fac_tank below. kept as a callable no-op so the earlier Unit
+        -- Count screen's call site doesn't need to change.
     end
 
-    -- fill in the forward-declared upvalue so the earlier Unit Count screen's
+    -- [NEW] fill in the forward-declared upvalue so the earlier Unit Count screen's
     -- submit handler can call the real implementation
     _update_fac_tank_availability = _update_fac_tank_availability_impl
 
     local function submit_en_fac_tank()
-        -- hard guard: never allow facility tank mode above 4 units, even if
-        -- tmp_cfg.UnitCount changed after this checkbox was last interacted with
-        if tmp_cfg.UnitCount > 4 then tool_ctl.en_fac_tanks.set_value(false) end
-
         if tool_ctl.en_fac_tanks.get_value() then
-            fac_pane.set_value(4)
-            tmp_cfg.FacilityTankMode = tri(tmp_cfg.FacilityTankMode == 0, 1, math.min(8, math.max(1, ini_cfg.FacilityTankMode)))
+            if tmp_cfg.UnitCount <= 4 then
+                fac_pane.set_value(4)
+                tmp_cfg.FacilityTankMode = tri(tmp_cfg.FacilityTankMode == 0, 1, math.min(8, math.max(1, ini_cfg.FacilityTankMode)))
+            else
+                -- [NEW] route larger facilities to the group-based screen instead
+                -- of the legacy visual mode picker
+                tmp_cfg.FacilityTankMode = -1 -- sentinel: "using grouped assignment, not a legacy mode"
+                if tmp_cfg.FacilityTankGroups == nil then tmp_cfg.FacilityTankGroups = {} end
+                for i = 1, tmp_cfg.UnitCount do
+                    if tmp_cfg.FacilityTankGroups[i] == nil then tmp_cfg.FacilityTankGroups[i] = 1 end
+                end
+                build_ftg_rows()
+                fac_pane.set_value(10)
+            end
         else
             tmp_cfg.FacilityTankMode = 0
             tmp_cfg.FacilityTankDefs = {}
@@ -779,6 +839,93 @@ function facility.create(tool_ctl, main_pane, cfg_sys, fac_cfg, style)
 
     PushButton{parent=fac_c_9,y=14,text="\x1b Back",callback=function()fac_pane.set_value(8)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
     PushButton{parent=fac_c_9,x=44,y=14,text="Next \x1a",callback=submit_idling,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+
+    --#endregion
+
+    -- [NEW] Facility Tank Groups (for facilities of more than 4 units)
+    --#region Facility Tank Groups
+
+    TextBox{parent=fac_c_10,y=1,height=5,text="Assign each unit's facility tank to a group number. Units sharing the same group number share one physical tank in-game - pipe their dynamic tanks together to match. Units with different group numbers get separate tanks."}
+    TextBox{parent=fac_c_10,y=7,text="UNIT    OWN TANK / FACILITY TANK    GROUP #",fg_bg=g_lg_fg_bg}
+
+    local ftg_list = ListBox{parent=fac_c_10,y=8,height=5,width=49,scroll_height=100,fg_bg=bw_fg_bg,nav_fg_bg=g_lg_fg_bg,nav_active=cpair(colors.black,colors.gray)}
+
+    local ftg_err = TextBox{parent=fac_c_10,y=13,width=49,text="",fg_bg=cpair(colors.red,colors.black)}
+    ftg_err.hide(true)
+
+    -- populated on entry to this pane, since it depends on tmp_cfg.UnitCount and
+    -- tmp_cfg.CoolingConfig[i].TankConnection, both only finalized by the time the
+    -- user reaches this screen (rather than at initial UI construction time)
+    local function build_ftg_rows_impl()
+        ftg_list.remove_all()
+        tool_ctl.ftg_elems = {}
+
+        for i = 1, tmp_cfg.UnitCount do
+            local has_tank = tmp_cfg.CoolingConfig[i] ~= nil and tmp_cfg.CoolingConfig[i].TankConnection == true
+
+            if has_tank then
+                local def_val = math.max(1, tmp_cfg.FacilityTankDefs[i] or 2)
+                local grp_val = math.max(1, tmp_cfg.FacilityTankGroups[i] or 1)
+
+                local row = Div{parent=ftg_list,height=1}
+
+                TextBox{parent=row,text="Unit "..i,width=8}
+                local tank_opt = Radio2D{parent=row,x=9,y=1,rows=1,columns=2,default=def_val,options={"Own Tank","Facility Tank"},radio_colors=cpair(colors.lightGray,colors.black),select_color=colors.yellow,disable_color=colors.gray,disable_fg_bg=g_lg_fg_bg}
+                local group_num = NumberField{parent=row,x=32,y=1,width=5,max_chars=2,default=grp_val,min=1,max=tmp_cfg.UnitCount,fg_bg=bw_fg_bg}
+
+                tool_ctl.ftg_elems[i] = { row = row, tank_opt = tank_opt, group_num = group_num }
+            else
+                -- unit has no tank at all (per the Cooling Configuration screen);
+                -- nothing to assign, matches the legacy fac_c_4 "no tank" case
+                tool_ctl.ftg_elems[i] = nil
+            end
+        end
+    end
+
+    -- [NEW] fill in the forward-declared upvalue so the earlier checkbox submit
+    -- handler can call the real implementation
+    build_ftg_rows = build_ftg_rows_impl
+
+    local function submit_ftg()
+        local any_facility_tank = false
+
+        for i = 1, tmp_cfg.UnitCount do
+            local elem = tool_ctl.ftg_elems[i]
+            if elem == nil then
+                tmp_cfg.FacilityTankDefs[i] = 0
+            else
+                local def = elem.tank_opt.get_value()
+                tmp_cfg.FacilityTankDefs[i] = def
+
+                local grp = tonumber(elem.group_num.get_value())
+                if not (util.is_int(grp) and grp >= 1 and grp <= tmp_cfg.UnitCount) then
+                    ftg_err.set_value("Unit "..i.."'s group number must be between 1 and "..tmp_cfg.UnitCount..".")
+                    ftg_err.show()
+                    return
+                end
+
+                tmp_cfg.FacilityTankGroups[i] = grp
+                if def == 2 then any_facility_tank = true end
+            end
+        end
+
+        if not any_facility_tank then
+            ftg_err.set_value("At least one unit must be set to use a Facility Tank, or go back and disable Facility Dynamic Tanks entirely.")
+            ftg_err.show()
+            return
+        end
+
+        ftg_err.hide(true)
+
+        tmp_cfg.FacilityTankList, tmp_cfg.FacilityTankConns = facility.generate_tank_list_and_conns_grouped(tmp_cfg.FacilityTankDefs, tmp_cfg.FacilityTankGroups)
+
+        self.draw_fluid_ops()
+
+        fac_pane.set_value(7)
+    end
+
+    PushButton{parent=fac_c_10,y=14,text="\x1b Back",callback=function()fac_pane.set_value(3)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    PushButton{parent=fac_c_10,x=44,y=14,text="Next \x1a",callback=submit_ftg,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
 
     --#endregion
 

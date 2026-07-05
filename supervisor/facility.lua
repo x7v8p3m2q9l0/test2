@@ -4,6 +4,7 @@ local types      = require("scada-common.types")
 local util       = require("scada-common.util")
 
 local alarm_ctl  = require("supervisor.alarm_ctl")
+local automation = require("supervisor.automation")
 local unit       = require("supervisor.unit")
 local fac_update = require("supervisor.facility_update")
 
@@ -174,6 +175,13 @@ function facility.new(config)
 
     -- provide self to facility update functions
     local f_update = fac_update(self)
+
+    -- [NEW] load and initialize custom automation rules, if any are configured.
+    -- see supervisor/automation.lua for the rule format and design notes. an
+    -- empty/missing rules directory results in zero rules loaded and zero
+    -- overhead - this is fully opt-in and has no effect on a facility that
+    -- doesn't use it.
+    local sv_automation = automation.init("/automation", self)
 
     -- create units
     for i = 1, config.UnitCount do
@@ -371,6 +379,18 @@ function facility.new(config)
 
         -- update alarm tones
         f_update.alarm_audio()
+
+        -- [NEW] evaluate custom automation rules last, after everything else has
+        -- settled for this tick. NOTE on sound_tone specifically: alarm_audio()
+        -- above fully resets and rebuilds the shared tone_states table from
+        -- current alarm conditions every tick, before this runs. A sound_tone
+        -- action sets a tone AFTER that reset, so it survives to be transmitted
+        -- for this tick, but since automation triggers are edge-detected (fire
+        -- once per transition), this produces a one-tick pulse, not a sustained
+        -- tone. A rule that needs to keep alerting until acknowledged is better
+        -- served by ack_alarm/scram_unit/redstone_output, or by a rule with a
+        -- short cooldown_s so it re-pulses periodically while the condition holds.
+        sv_automation.evaluate()
     end
 
     -- call the update function of all units in the facility<br>

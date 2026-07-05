@@ -18,7 +18,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 -- write some of my own code
 
-local CCMSI_VERSION = "v1.23-C"
+local CCMSI_VERSION = "v1.24-C"
 
 local IS_PKT = pocket ~= nil -- luacheck: ignore pocket
 

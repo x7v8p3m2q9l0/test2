@@ -1137,6 +1137,13 @@ function unit.new(reactor_id, num_boilers, num_turbines, ext_idle, aux_coolant)
     ---@nodiscard
     function public.get_id() return self.r_id end
 
+    -- [NEW] expose this unit's redstone I/O controller so external callers (the
+    -- automation engine) can read/write unit-scoped redstone ports (U_ACK,
+    -- U_ALARM, U_EMER_COOL, U_AUX_COOL) correctly addressed to this unit's bank,
+    -- rather than only the facility-wide bank 0 controller.
+    ---@nodiscard
+    function public.get_io_ctl() return self.io_ctl end
+
     --#endregion
 
     return public

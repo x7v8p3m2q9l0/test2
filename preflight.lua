@@ -1,3 +1,14 @@
+--
+-- Preflight Diagnostic Tool
+--
+-- [NEW] Run this BEFORE configuring any cc-mek-scada component. It scans every
+-- connected peripheral (direct + wired modem) and tells you, in plain language,
+-- what this computer can see and which SCADA role(s) that supports. It makes
+-- zero changes to any config or settings file - purely read-only diagnostics.
+--
+-- Usage: place in the same directory as ccmsi.lua on any computer, then run:
+--   preflight
+--
 
 local function c(...) local t = {...} return table.concat(t) end
 

@@ -96,6 +96,9 @@ local tmp_cfg = {
     FacilityTankDefs = {},  ---@type integer[] each unit's tank connection target (0 = disconnected, 1 = unit, 2 = facility)
     FacilityTankList = {},  ---@type integer[] list of tanks by slot (0 = none or covered by an above tank, 1 = unit tank, 2 = facility tank)
     FacilityTankConns = {}, ---@type integer[] map of unit tank connections (indicies are units, values are tank indicies in the tank list)
+    -- [NEW] per-unit tank group number, used instead of FacilityTankMode for
+    -- facilities of more than 4 units - see supervisor/config/facility.lua
+    FacilityTankGroups = {}, ---@type integer[] each unit's tank group number (only meaningful where FacilityTankDefs[i] == 2)
     TankFluidTypes = {},    ---@type integer[] which type of fluid each tank in the tank list should be containing
     AuxiliaryCoolant = {},  ---@type boolean[] if a unit has auxiliary coolant
     ExtChargeIdling = false,
@@ -141,6 +144,7 @@ local fields = {
     { "FacilityTankDefs", "Facility Tank Definitions", {} },
     { "FacilityTankList", "Facility Tank List", {} },         -- hidden
     { "FacilityTankConns", "Facility Tank Connections", {} }, -- hidden
+    { "FacilityTankGroups", "Facility Tank Groups", {} },     -- hidden
     { "TankFluidTypes", "Tank Fluid Types", {} },
     { "AuxiliaryCoolant", "Auxiliary Water Coolant", {} },
     { "ExtChargeIdling", "Extended Charge Idling", false },
